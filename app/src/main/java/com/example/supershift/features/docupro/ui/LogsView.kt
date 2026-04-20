@@ -1,3 +1,4 @@
+
 package com.example.supershift.features.docupro.ui
 
 import android.widget.Toast
@@ -7,7 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Person
@@ -22,8 +23,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.supershift.data.SuperShiftDao
-import com.example.supershift.data.IncidentLog
-import com.example.supershift.data.Associate
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -34,9 +33,7 @@ import java.util.Locale
 fun LogsView(dao: SuperShiftDao) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val scope = rememberCoroutineScope()
 
-    // 1. Reactive State: The UI will automatically update when the DB changes
     val incidents by dao.getAllIncidents().collectAsState(initial = emptyList())
     val associates by dao.getAllAssociates().collectAsState(initial = emptyList())
 
@@ -57,27 +54,25 @@ fun LogsView(dao: SuperShiftDao) {
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(incidents) { incident ->
-                    // Find the associate that matches this incident
+                    // Check if it's our automated System Shift Report
+                    val isSystemReport = incident.associateId == -1
+
                     val associate = associates.find { it.id == incident.associateId }
-                    val associateName = associate?.name ?: "Unknown Associate"
-                    val associateRole = associate?.role ?: "Unknown Role"
+                    val associateName = if (isSystemReport) "SuperShift Engine" else (associate?.name ?: "Unknown Associate")
+                    val associateRole = if (isSystemReport) "Automated Summary" else (associate?.role ?: "Unknown Role")
 
                     var expanded by remember { mutableStateOf(false) }
 
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { expanded = !expanded },
+                        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSystemReport) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                        )
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            // Top Row: Header Info
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            // Header
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = dateFormat.format(Date(incident.timestampMs)),
@@ -87,12 +82,12 @@ fun LogsView(dao: SuperShiftDao) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
-                                            Icons.Default.Person,
+                                            if (isSystemReport) Icons.Default.Edit else Icons.Default.Person,
                                             contentDescription = null,
                                             modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.primary
+                                            tint = if (isSystemReport) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
                                         )
-                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = "$associateName ($associateRole)",
                                             style = MaterialTheme.typography.titleMedium,
@@ -110,14 +105,14 @@ fun LogsView(dao: SuperShiftDao) {
                             // Expanded Content
                             AnimatedVisibility(visible = expanded) {
                                 Column(modifier = Modifier.padding(top = 16.dp)) {
-                                    Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
                                     Spacer(modifier = Modifier.height(12.dp))
 
                                     Text(
-                                        text = "Narrative:",
+                                        text = if (isSystemReport) "Shift Data:" else "Narrative:",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = if (isSystemReport) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
@@ -127,24 +122,17 @@ fun LogsView(dao: SuperShiftDao) {
 
                                     Spacer(modifier = Modifier.height(16.dp))
 
-                                    // Bottom Row: Actions & Chips
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                         TextButton(
                                             onClick = {
                                                 clipboardManager.setText(AnnotatedString(incident.description))
-                                                Toast.makeText(context, "Narrative Copied!", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "Copied!", Toast.LENGTH_SHORT).show()
                                             }
                                         ) {
-                                            Text("COPY NARRATIVE", style = MaterialTheme.typography.labelSmall)
+                                            Text("COPY LOG", style = MaterialTheme.typography.labelSmall)
                                         }
 
-                                        // Styling the chip based on category severity
-                                        val isSevere = incident.category.contains("Dismissal", ignoreCase = true) ||
-                                                incident.category.contains("Violation", ignoreCase = true)
+                                        val isSevere = incident.category.contains("Dismissal", ignoreCase = true) || incident.category.contains("Violation", ignoreCase = true)
 
                                         FilterChip(
                                             selected = true,

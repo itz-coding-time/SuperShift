@@ -4,122 +4,141 @@ import android.content.Context
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
-// ==========================================
-// 1. ENTITIES (The Tables)
-// ==========================================
-
 @Entity(tableName = "associates")
 data class Associate(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
     val role: String,
-    val pinCode: String? = null // For fast switching on the floor
+    val currentArchetype: String = "Float",
+    val pinCode: String? = null
+)
+
+@Entity(tableName = "schedule_entries")
+data class ScheduleEntry(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val associateName: String,
+    val startTime: String,
+    val endTime: String
+)
+
+@Entity(tableName = "inventory_items")
+data class InventoryItem(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val itemName: String,
+    val buildTo: String,
+    val category: String,
+    val amountHave: Int? = null,
+    val amountNeeded: Int? = null
 )
 
 @Entity(tableName = "tasks")
 data class ShiftTask(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val itemName: String,      // e.g., "Sammich PB Grape"
-    val pullAmount: String,    // e.g., "12 BT"
-    val category: String,      // e.g., "RTE", "Prep", "Bakery"
-    val basePoints: Int,       // Gamification: Point value for completing
+    val taskName: String,
+    val archetype: String,
+    val basePoints: Int = 10,
     val isCompleted: Boolean = false,
-    val completedById: Int? = null, // Links to Associate.id
-    val timestampMs: Long? = null
+    val isPullTask: Boolean = false,
+    val pullCategory: String? = null,
+    val isSticky: Boolean = false,
+    val priority: String = "Normal" // High, Normal, Low
 )
 
 @Entity(tableName = "incidents")
 data class IncidentLog(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val associateId: Int,      // Links to Associate.id
-    val description: String,   // What happened
-    val category: String,      // e.g., "Insubordination", "Task Failure"
+    val associateId: Int,
+    val description: String,
+    val category: String,
     val timestampMs: Long,
-    val isStatementGenerated: Boolean = false // Flags if DocuPro has processed it
+    val isStatementGenerated: Boolean = false
 )
 
-// ==========================================
-// 2. DATA ACCESS OBJECT (The Queries)
-// ==========================================
+@Entity(tableName = "shift_state")
+data class ShiftState(
+    @PrimaryKey val id: Int = 1,
+    val startTimeMs: Long,
+    val shiftName: String,
+    val isOpen: Boolean = false
+)
 
 @Dao
 interface SuperShiftDao {
-
-    // --- Associates ---
     @Query("SELECT * FROM associates ORDER BY name ASC")
     fun getAllAssociates(): Flow<List<Associate>>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAssociate(associate: Associate)
+    @Update
+    suspend fun updateAssociate(associate: Associate)
 
-    // --- Tasks (The Mission Engine) ---
-    @Query("SELECT * FROM tasks WHERE isCompleted = 0 ORDER BY category ASC")
-    fun getPendingTasks(): Flow<List<ShiftTask>>
-
-    @Query("SELECT * FROM tasks WHERE category = :category AND isCompleted = 0")
-    fun getTasksByCategory(category: String): Flow<List<ShiftTask>>
-
-    @Query("DELETE FROM tasks WHERE category = :category AND isCompleted = 0")
-    suspend fun deletePendingTasksByCategory(category: String)
-
+    @Query("SELECT * FROM schedule_entries ORDER BY startTime ASC")
+    fun getSchedule(): Flow<List<ScheduleEntry>>
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTasks(tasks: List<ShiftTask>) // For the CSV Importer!
+    suspend fun insertScheduleEntry(entry: ScheduleEntry)
+    @Delete
+    suspend fun deleteScheduleEntry(entry: ScheduleEntry)
+    @Query("DELETE FROM schedule_entries")
+    suspend fun clearSchedule()
 
+    @Query("SELECT * FROM tasks ORDER BY isCompleted ASC, archetype ASC")
+    fun getAllTasks(): Flow<List<ShiftTask>>
+    @Query("SELECT * FROM tasks WHERE pullCategory = :category LIMIT 1")
+    suspend fun getTaskByPullCategory(category: String): ShiftTask?
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTask(task: ShiftTask)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTasks(tasks: List<ShiftTask>)
     @Update
     suspend fun updateTask(task: ShiftTask)
 
-    //Shift State
+    // --- Wipe & Reset Commands ---
+    @Query("DELETE FROM tasks WHERE isSticky = 0 AND isPullTask = 0")
+    suspend fun deleteJitTasks()
+    @Query("UPDATE tasks SET isCompleted = 0 WHERE isSticky = 1 OR isPullTask = 1")
+    suspend fun resetStickyAndPullTasks()
 
-    @Entity(tableName = "shift_state")
-    data class ShiftState(
-        @PrimaryKey val id: Int = 1, // Only one active shift at a time
-        val startTimeMs: Long,
-        val shiftName: String, // e.g., "Overnight", "Morning", "Afternoon"
-        val isOpen: Boolean = false
-    )
+    // --- Load Balancing Command ---
+    @Query("UPDATE tasks SET archetype = 'MOD' WHERE archetype = :fromZone AND priority = 'High' AND isCompleted = 0")
+    suspend fun pullHighPriorityToMod(fromZone: String)
+
+    @Query("SELECT * FROM inventory_items WHERE category = :category")
+    fun getInventoryByCategory(category: String): Flow<List<InventoryItem>>
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInventoryItem(item: InventoryItem)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInventoryItems(items: List<InventoryItem>)
+    @Update
+    suspend fun updateInventoryItem(item: InventoryItem)
+    @Delete
+    suspend fun deleteInventoryItem(item: InventoryItem)
+    @Query("DELETE FROM inventory_items WHERE category = :category")
+    suspend fun clearInventoryByCategory(category: String)
+    @Query("UPDATE inventory_items SET amountHave = null, amountNeeded = null")
+    suspend fun resetInventoryCounts()
+
+    @Query("SELECT * FROM incidents ORDER BY timestampMs DESC")
+    fun getAllIncidents(): Flow<List<IncidentLog>>
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertIncident(incident: IncidentLog)
 
     @Query("SELECT * FROM shift_state WHERE id = 1")
     fun getActiveShift(): Flow<ShiftState?>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun updateShiftState(state: ShiftState)
-
     @Query("DELETE FROM shift_state WHERE id = 1")
     suspend fun clearShiftState()
 }
 
-    // --- Incidents (The Black Box) ---
-    @Query("SELECT * FROM incidents ORDER BY timestampMs DESC")
-    fun getAllIncidents(): Flow<List<IncidentLog>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertIncident(incident: IncidentLog)
-}
-
-// ==========================================
-// 3. DATABASE BUILDER (The Engine)
-// ==========================================
-
-@Database(entities = [Associate::class, ShiftTask::class, IncidentLog::class], version = 1, exportSchema = false)
+@Database(entities = [Associate::class, ScheduleEntry::class, ShiftTask::class, InventoryItem::class, IncidentLog::class, ShiftState::class], version = 6, exportSchema = false)
 abstract class SuperShiftDatabase : RoomDatabase() {
-
     abstract fun superShiftDao(): SuperShiftDao
-
     companion object {
-        @Volatile
-        private var INSTANCE: SuperShiftDatabase? = null
-
+        @Volatile private var INSTANCE: SuperShiftDatabase? = null
         fun getDatabase(context: Context): SuperShiftDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    SuperShiftDatabase::class.java,
-                    "supershift_database"
-                )
-                    // .fallbackToDestructiveMigration() // Use this during dev if schema changes
-                    .build()
-                INSTANCE = instance
-                instance
+                val instance = Room.databaseBuilder(context.applicationContext, SuperShiftDatabase::class.java, "supershift_database")
+                    .fallbackToDestructiveMigration().build()
+                INSTANCE = instance; instance
             }
         }
     }
