@@ -11,6 +11,7 @@ class SuperShiftApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
         // We can initialize other global variables or analytics here later
     }
 }
