@@ -59,11 +59,34 @@ interface SuperShiftDao {
     @Query("SELECT * FROM tasks WHERE category = :category AND isCompleted = 0")
     fun getTasksByCategory(category: String): Flow<List<ShiftTask>>
 
+    @Query("DELETE FROM tasks WHERE category = :category AND isCompleted = 0")
+    suspend fun deletePendingTasksByCategory(category: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTasks(tasks: List<ShiftTask>) // For the CSV Importer!
 
     @Update
     suspend fun updateTask(task: ShiftTask)
+
+    //Shift State
+
+    @Entity(tableName = "shift_state")
+    data class ShiftState(
+        @PrimaryKey val id: Int = 1, // Only one active shift at a time
+        val startTimeMs: Long,
+        val shiftName: String, // e.g., "Overnight", "Morning", "Afternoon"
+        val isOpen: Boolean = false
+    )
+
+    @Query("SELECT * FROM shift_state WHERE id = 1")
+    fun getActiveShift(): Flow<ShiftState?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun updateShiftState(state: ShiftState)
+
+    @Query("DELETE FROM shift_state WHERE id = 1")
+    suspend fun clearShiftState()
+}
 
     // --- Incidents (The Black Box) ---
     @Query("SELECT * FROM incidents ORDER BY timestampMs DESC")
