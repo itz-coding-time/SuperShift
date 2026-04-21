@@ -1,5 +1,6 @@
 package com.example.supershift.features.docupro.ui
 
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -11,6 +12,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.supershift.data.SuperShiftDao
+import com.example.supershift.utils.CsvExporter
 import com.example.supershift.utils.CsvImporter
 import kotlinx.coroutines.launch
 
@@ -30,6 +34,9 @@ fun ManagerSettingsView(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var targetCategory by remember { mutableStateOf("") }
+
+    // We need the task list to feed into the Exporter
+    val allTasks by dao.getAllTasks().collectAsState(initial = emptyList())
 
     val csvPickerLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -45,25 +52,42 @@ fun ManagerSettingsView(
         }
     }
 
+    // --- NEW: Task Checklist Export Launcher ---
+    val exportChecklistLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        uri?.let {
+            scope.launch {
+                context.contentResolver.openOutputStream(it)?.use { stream ->
+                    CsvExporter.exportTaskChecklist(stream, allTasks)
+                    Toast.makeText(context, "Checklist backed up successfully!", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
         Text("Manager Control Panel", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- 1. SHIFT TIMING ---
+        // --- SECTION 1: SHIFT TIMING ---
+        Text("SHIFT CONTEXT", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(8.dp))
         ShiftManagerView(dao = dao)
+
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- 2. TABLE FLIPS ---
+        // --- SECTION 2: TABLE FLIPS ---
+        Text("FOOD SAFETY: MIDNIGHT FLIPS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(8.dp))
         OutlinedCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Table Flip Configuration", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Manage Midnight Flip items via editor or CSV.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-                Button(onClick = { onNavigate("TableEditor") }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
-                    Icon(Icons.Default.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Open Table Editor")
+                Button(onClick = { onNavigate("TableEditor") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
+                    Icon(Icons.Default.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Dynamic Table Editor")
                 }
 
-                Text("CSV Injection:", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("CSV Data Sync:", style = MaterialTheme.typography.labelSmall)
                 Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { targetCategory = "Starter"; csvPickerLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) { Text("Starter") }
                     Button(onClick = { targetCategory = "Finisher A"; csvPickerLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) { Text("Fin A") }
@@ -71,19 +95,20 @@ fun ManagerSettingsView(
                 }
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
 
-        // --- 3. INVENTORY PULLS ---
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // --- SECTION 3: INVENTORY ---
+        Text("INVENTORY: PULL LISTS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(8.dp))
         OutlinedCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Inventory Configuration", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Manage Pull Lists via editor or CSV.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-                Button(onClick = { onNavigate("Inventory") }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
-                    Icon(Icons.Default.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Open Pull List Editor")
+                Button(onClick = { onNavigate("Inventory") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
+                    Icon(Icons.Default.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Dynamic Inventory Editor")
                 }
 
-                Text("CSV Injection:", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("CSV Data Sync:", style = MaterialTheme.typography.labelSmall)
                 Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { targetCategory = "RTE"; csvPickerLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) { Text("RTE") }
                     Button(onClick = { targetCategory = "Prep"; csvPickerLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) { Text("Prep") }
@@ -94,44 +119,62 @@ fun ManagerSettingsView(
                 }
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
 
-        // --- GENERAL TASKS (Checklist) ---
-        Button(onClick = { targetCategory = "Checklist"; csvPickerLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
-            Icon(Icons.Default.Add, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Upload General Task Checklist")
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // --- SECTION 3.5: GENERAL TASKS ---
+        Text("FLOOR LOGISTICS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Button(onClick = { targetCategory = "Checklist"; csvPickerLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
+                    Icon(Icons.Default.Add, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Upload Z1 Checklist CSV")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = { exportChecklistLauncher.launch("Z1_Checklist_Backup.csv") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                    Icon(Icons.Default.Send, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Backup Checklist to CSV")
+                }
+            }
         }
+
         Spacer(modifier = Modifier.height(24.dp))
         HorizontalDivider()
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- 4. ASSOCIATES ---
-        Text("Team Management", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        // --- SECTION 4: ASSOCIATES ---
+        Text("PERSONNEL", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = { onNavigate("Roster") }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.Person, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Manage Associate Roster")
+            Icon(Icons.Default.Person, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Associate Roster")
         }
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = { onNavigate("Schedule") }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.AccountBox, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Manage Shift Schedule")
+            Icon(Icons.Default.AccountBox, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Associate Schedule")
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- 5. LOGS & HR ---
-        Text("Accountability", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        // --- SECTION 5: ACCOUNTABILITY ---
+        Text("ACCOUNTABILITY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = { onNavigate("Logs") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)) {
-            Icon(Icons.Default.Warning, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("View Black Box Logs")
+            Icon(Icons.Default.Warning, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Black Box Logs")
         }
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = { onNavigate("Statements") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)) {
-            Icon(Icons.Default.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Generate HR Statements")
+            Icon(Icons.Default.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("HR Statements")
+        }
+
+        Spacer(modifier = Modifier.height(48.dp))
+
+        // --- SECTION 6: LOCK ---
+        Button(onClick = onLock, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Lock, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Lock Manager Access")
         }
         Spacer(modifier = Modifier.height(32.dp))
-
-        // --- 6. LOCK ---
-        Button(onClick = onLock, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), modifier = Modifier.fillMaxWidth()) {
-            Text("Lock & Return")
-        }
-        Spacer(modifier = Modifier.height(16.dp))
     }
 }
