@@ -46,9 +46,35 @@ object CsvImporter {
             try {
                 inputStream.bufferedReader().useLines { lines ->
                     lines.drop(1).forEach { line ->
-                        val tokens = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)".toRegex())
+                        // Clean quotes and trim
+                        val tokens = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)".toRegex()).map { it.trim().replace("\"", "") }
+
                         if (tokens.size >= 2) {
-                            tasksToInsert.add(ShiftTask(taskName = tokens[0].trim().replace("\"", ""), archetype = tokens[1].trim(), basePoints = tokens.getOrNull(2)?.trim()?.toIntOrNull() ?: 10, isPullTask = false))
+                            val taskName = tokens[0]
+                            val archetype = tokens[1]
+
+                            // NEW: Numeric Schema Handling (1=High, 2=Normal, 3=Low)
+                            val rawPriority = tokens.getOrNull(2) ?: "2"
+                            val safePriority = when (rawPriority) {
+                                "1", "High", "high" -> "High"
+                                "3", "Low", "low" -> "Low"
+                                else -> "Normal" // Covers "2", "Normal", "Med", blanks, etc.
+                            }
+
+                            // Safely handle Sticky bool (Accepts 1, 0, true, false)
+                            val rawSticky = tokens.getOrNull(3) ?: "0"
+                            val isSticky = rawSticky == "1" || rawSticky.equals("true", ignoreCase = true)
+
+                            tasksToInsert.add(
+                                ShiftTask(
+                                    taskName = taskName,
+                                    archetype = archetype,
+                                    priority = safePriority,
+                                    isSticky = isSticky,
+                                    basePoints = 10,
+                                    isPullTask = false
+                                )
+                            )
                         }
                     }
                 }

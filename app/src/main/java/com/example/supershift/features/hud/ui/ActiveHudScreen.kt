@@ -27,6 +27,11 @@ import kotlinx.coroutines.launch
 @Composable
 fun ActiveHudScreen(dao: SuperShiftDao) {
     val scope = rememberCoroutineScope()
+
+    // --- SHIFT STATE GUARD ---
+    val activeShift by dao.getActiveShift().collectAsState(initial = null)
+    val isShiftActive = activeShift?.isOpen == true
+
     val allTasks by dao.getAllTasks().collectAsState(initial = emptyList())
     val associates by dao.getAllAssociates().collectAsState(initial = emptyList())
 
@@ -58,10 +63,19 @@ fun ActiveHudScreen(dao: SuperShiftDao) {
         Column(modifier = Modifier.padding(padding).padding(16.dp).fillMaxSize()) {
             Text("Active Tasks", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
-            if (sortedPendingTasks.isEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // SHOW WARNING IF SHIFT IS CLOSED
+            if (!isShiftActive) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                    Text("⚠️ NO ACTIVE SHIFT. Task completion is disabled until the MOD initializes the floor.", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            if (sortedPendingTasks.isEmpty() && isShiftActive) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("All tasks complete. Excellent shift!") }
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 16.dp)) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     val displayOrder = listOf("Kitchen", "POS", "Float", "MOD")
 
                     displayOrder.forEach { archetype ->
@@ -73,7 +87,7 @@ fun ActiveHudScreen(dao: SuperShiftDao) {
 
                                 Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                                     Text(zoneTitle.uppercase(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = if (archetype == "MOD") MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.secondary)
-                                    if (archetype != "MOD" && hasHighPriority) {
+                                    if (archetype != "MOD" && hasHighPriority && isShiftActive) {
                                         TextButton(onClick = { scope.launch { dao.pullHighPriorityToMod(archetype) } }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
                                             Text("PULL HIGH PRIORITY TO MOD", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                                         }
@@ -86,6 +100,7 @@ fun ActiveHudScreen(dao: SuperShiftDao) {
                             items(tasks) { task ->
                                 TaskCardUI(
                                     task = task,
+                                    isShiftActive = isShiftActive,
                                     onClick = {
                                         if (task.isPullTask) activePullCategory = task.pullCategory
                                         else if (task.taskName.startsWith("Midnight Flip:")) activeTableFlipTask = task
@@ -103,7 +118,7 @@ fun ActiveHudScreen(dao: SuperShiftDao) {
                                         }
                                     }
                                     items(assistTasks) { task ->
-                                        TaskCardUI(task, onClick = { if (task.isPullTask) activePullCategory = task.pullCategory else if (task.taskName.startsWith("Midnight Flip:")) activeTableFlipTask = task }, onComplete = { scope.launch { dao.updateTask(task.copy(isCompleted = true)) } })
+                                        TaskCardUI(task = task, isShiftActive = isShiftActive, onClick = { if (task.isPullTask) activePullCategory = task.pullCategory else if (task.taskName.startsWith("Midnight Flip:")) activeTableFlipTask = task }, onComplete = { scope.launch { dao.updateTask(task.copy(isCompleted = true)) } })
                                     }
                                 }
                             }
@@ -138,9 +153,7 @@ fun ActiveHudScreen(dao: SuperShiftDao) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         listOf("Low", "Normal", "High").forEach { prio ->
                             FilterChip(
-                                selected = selectedPriority == prio,
-                                onClick = { selectedPriority = prio },
-                                label = { Text(prio) },
+                                selected = selectedPriority == prio, onClick = { selectedPriority = prio }, label = { Text(prio) },
                                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = if (prio == "High") MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer)
                             )
                         }
@@ -177,7 +190,7 @@ fun ActiveHudScreen(dao: SuperShiftDao) {
 }
 
 @Composable
-fun TaskCardUI(task: ShiftTask, onClick: () -> Unit, onComplete: () -> Unit) {
+fun TaskCardUI(task: ShiftTask, isShiftActive: Boolean, onClick: () -> Unit, onComplete: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(2.dp), onClick = onClick) {
         Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Column(modifier = Modifier.weight(1f)) {
@@ -201,7 +214,9 @@ fun TaskCardUI(task: ShiftTask, onClick: () -> Unit, onComplete: () -> Unit) {
                     Text(if (task.isPullTask) "Tap to begin count" else "Tap to begin audit", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
-            Button(onClick = onComplete) {
+
+            // GUARD: Disables the DONE button if shift is inactive
+            Button(onClick = onComplete, enabled = isShiftActive) {
                 Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("DONE")
@@ -210,6 +225,7 @@ fun TaskCardUI(task: ShiftTask, onClick: () -> Unit, onComplete: () -> Unit) {
     }
 }
 
+// --- SAFE UI UPDATE FOR OVERLAP FIX ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TableFlipDialog(station: String, flipTask: ShiftTask, dao: SuperShiftDao, onClose: () -> Unit) {
@@ -218,7 +234,8 @@ fun TableFlipDialog(station: String, flipTask: ShiftTask, dao: SuperShiftDao, on
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Column {
+            // NEW: systemBarsPadding() pushes the content above the Navigation/Home Bar!
+            Column(modifier = Modifier.systemBarsPadding()) {
                 TopAppBar(
                     title = { Text("$station Midnight Flip") },
                     navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") } }
@@ -284,7 +301,7 @@ fun InventoryPullDialog(category: String, dao: SuperShiftDao, onClose: () -> Uni
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Column {
+            Column(modifier = Modifier.systemBarsPadding()) { // Also protected the Inventory Pull!
                 TopAppBar(
                     title = { Text("$category Pull List") },
                     navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") } }
