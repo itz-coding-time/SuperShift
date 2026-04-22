@@ -11,7 +11,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -76,7 +76,7 @@ fun InventoryEditorView(dao: SuperShiftDao) {
 
                 if (items.isNotEmpty()) {
                     TextButton(onClick = { exportLauncher.launch("${selectedCategory}_Pull_Backup.csv") }) {
-                        Icon(Icons.Default.Send, contentDescription = "Export CSV", modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Download, contentDescription = "Export CSV", modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Backup to CSV")
                     }
@@ -92,14 +92,12 @@ fun InventoryEditorView(dao: SuperShiftDao) {
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(items) { item ->
-                        // --- INLINE EDITING STATE ---
                         var isEditing by remember { mutableStateOf(false) }
                         var editName by remember(item.itemName) { mutableStateOf(item.itemName) }
                         var editBuildTo by remember(item.buildTo) { mutableStateOf(item.buildTo) }
 
                         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                             if (isEditing) {
-                                // EDIT MODE UI
                                 Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Item Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -124,7 +122,6 @@ fun InventoryEditorView(dao: SuperShiftDao) {
                                     }
                                 }
                             } else {
-                                // VIEW MODE UI
                                 Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(item.itemName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
@@ -171,7 +168,7 @@ fun InventoryEditorView(dao: SuperShiftDao) {
                                 else -> "Float"
                             }
                             if (dao.getTaskByPullCategory(selectedCategory) == null) {
-                                dao.insertTask(ShiftTask(taskName = "$selectedCategory Pull", archetype = defaultArch, isPullTask = true, pullCategory = selectedCategory, basePoints = 50))
+                                dao.insertTask(ShiftTask(taskName = "$selectedCategory Pull List", archetype = defaultArch, isPullTask = true, pullCategory = selectedCategory, basePoints = 50))
                             }
                             showAddItemDialog = false
                         }
