@@ -10,12 +10,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.AccountBox
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +29,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun ManagerSettingsView(
     dao: SuperShiftDao,
+    isDebugMode: Boolean, // Added Debug State
+    onDebugToggle: (Boolean) -> Unit, // Added Debug Callback
     onNavigate: (String) -> Unit,
     onLock: () -> Unit
 ) {
@@ -35,8 +38,9 @@ fun ManagerSettingsView(
     val scope = rememberCoroutineScope()
     var targetCategory by remember { mutableStateOf("") }
 
-    // We need the task list to feed into the Exporter
     val allTasks by dao.getAllTasks().collectAsState(initial = emptyList())
+    val associates by dao.getAllAssociates().collectAsState(initial = emptyList())
+    val hasAssociates = associates.isNotEmpty()
 
     val csvPickerLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -52,7 +56,6 @@ fun ManagerSettingsView(
         }
     }
 
-    // --- NEW: Task Checklist Export Launcher ---
     val exportChecklistLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri?.let {
             scope.launch {
@@ -85,7 +88,6 @@ fun ManagerSettingsView(
                 Button(onClick = { onNavigate("TableEditor") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
                     Icon(Icons.Default.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Dynamic Table Editor")
                 }
-
                 Spacer(modifier = Modifier.height(12.dp))
                 Text("CSV Data Sync:", style = MaterialTheme.typography.labelSmall)
                 Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -106,7 +108,6 @@ fun ManagerSettingsView(
                 Button(onClick = { onNavigate("Inventory") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
                     Icon(Icons.Default.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Dynamic Inventory Editor")
                 }
-
                 Spacer(modifier = Modifier.height(12.dp))
                 Text("CSV Data Sync:", style = MaterialTheme.typography.labelSmall)
                 Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -132,7 +133,7 @@ fun ManagerSettingsView(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(onClick = { exportChecklistLauncher.launch("Z1_Checklist_Backup.csv") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)) {
-                    Icon(Icons.Default.Send, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Backup Checklist to CSV")
+                    Icon(Icons.Default.Download, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Backup Checklist to CSV")
                 }
             }
         }
@@ -148,8 +149,12 @@ fun ManagerSettingsView(
             Icon(Icons.Default.Person, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Associate Roster")
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = { onNavigate("Schedule") }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.AccountBox, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Associate Schedule")
+
+        Button(onClick = { onNavigate("Schedule") }, modifier = Modifier.fillMaxWidth(), enabled = hasAssociates) {
+            Icon(Icons.Default.Schedule, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Associate Schedule")
+        }
+        if (!hasAssociates) {
+            Text("Add an associate to the roster before scheduling.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -167,9 +172,26 @@ fun ManagerSettingsView(
             Icon(Icons.Default.Edit, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("HR Statements")
         }
 
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // --- SECTION 6: SYSTEM & DEBUG (NEW) ---
+        Text("SYSTEM & DEBUG", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(8.dp))
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("Developer Debug Mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Lifts shift locks to test task execution.", style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(checked = isDebugMode, onCheckedChange = onDebugToggle)
+            }
+        }
+
         Spacer(modifier = Modifier.height(48.dp))
 
-        // --- SECTION 6: LOCK ---
+        // --- SECTION 7: LOCK ---
         Button(onClick = onLock, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.Lock, contentDescription = null)
             Spacer(Modifier.width(8.dp))
